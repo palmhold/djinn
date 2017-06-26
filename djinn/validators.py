@@ -21,25 +21,29 @@ from djinn import errors
 
 
 class Validator(object):
-
     """Basic Validator class"""
     _error_message = "%s is an invalid param"
 
-    def __init__(self, param, default=None, message=None, code=400):
+    def __init__(self, param, default=None, message=None, code=400, optional=False):
         self.param = param
         self.default = default
         self.message = message
         self.code = code
+        self.optional = optional
 
         def _validate(func):
             @functools.wraps(func)
             def __validate(handler, *args, **kwargs):
                 # validate handler.arguments
                 self.handler = handler
+                if self.optional:
+                    if self.get_argument(self.param) == self.default:
+                        return func(handler, *args, **kwargs)
                 self.validate()
                 return func(handler, *args, **kwargs)
 
             return __validate
+
         self._validate = _validate
 
     def __call__(self, *args, **kwargs):
@@ -85,11 +89,11 @@ class String(Validator):
     _error_message = "%s's length is invalid(%s-%s)"
 
     def __init__(self, param, default="", message=None,
-                 max_len=200, min_len=0, as_unicode=True, code=400):
+                 max_len=200, min_len=0, as_unicode=True, code=400, optional=False):
         self.max_len = max_len
         self.min_len = min_len
         self.as_unicode = as_unicode
-        super(String, self).__init__(param, default, message, code)
+        super(String, self).__init__(param, default, message, code, optional)
 
     def validate(self):
         value = self.get_argument(self.param, self.default)
@@ -106,9 +110,9 @@ class PlainText(String):
     _error_message = "%s is an invalid plain text(a-z, A-Z,0-9 and _)"
 
     def __init__(self, param, default="", message=None,
-                 max_len=200, min_len=0, code=400):
+                 max_len=200, min_len=0, code=400, optional=False):
         super(PlainText, self).__init__(param,
-                                        default, message, max_len, min_len, code)
+                                        default, message, max_len, min_len, code, optional)
         self.regex = re.compile('^[a-zA-Z0-9_]{%d,%d}$' %
                                 (self.min_len, self.max_len), re.IGNORECASE)
 
@@ -123,8 +127,8 @@ class PlainText(String):
 class Integer(Validator):
     _error_message = "%s should be integer"
 
-    def __init__(self, param, default=0, message=None, code=400):
-        super(Integer, self).__init__(param, default, message, code)
+    def __init__(self, param, default=0, message=None, code=400, optional=False):
+        super(Integer, self).__init__(param, default, message, code, optional)
 
     def validate(self):
         try:
@@ -136,10 +140,10 @@ class Integer(Validator):
 class Enum(Validator):
     _error_message = "%s should be in %s"
 
-    def __init__(self, param, type_=None, enum=None, default=None, message=None, code=400):
+    def __init__(self, param, type_=None, enum=None, default=None, message=None, code=400, optional=False):
         self.enum = enum if enum else ()
         self.type_ = type_
-        super(Enum, self).__init__(param, default, message, code)
+        super(Enum, self).__init__(param, default, message, code, optional)
 
     def validate(self):
         value = self.get_argument(self.param, self.default)
@@ -168,9 +172,9 @@ class Regex(Validator):
     _error_message = "%s is invalid"
 
     def __init__(self, param, regex, flags=re.IGNORECASE, default="",
-                 message=None, code=400):
+                 message=None, code=400, optional=False):
         self.regex = re.compile(regex, flags)
-        super(Regex, self).__init__(param, default, message, code)
+        super(Regex, self).__init__(param, default, message, code, optional)
 
     def validate(self):
         value = self.get_argument(self.param, self.default)
@@ -181,16 +185,15 @@ class Regex(Validator):
 class Email(Regex):
     _error_message = "%s is an invalid email address"
 
-    def __init__(self, param, message=None, code=400):
+    def __init__(self, param, message=None, code=400, optional=False):
         # borrow email re pattern from django
-        regex =  r"(^[-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*" \
-            r'|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-011\013\014\016-\177])*"' \
-            r")@(?:[A-Z0-9]+(?:-*[A-Z0-9]+)*\.)+[A-Z]{2,6}$"
+        regex = r"(^[-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*" \
+                r'|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-011\013\014\016-\177])*"' \
+                r")@(?:[A-Z0-9]+(?:-*[A-Z0-9]+)*\.)+[A-Z]{2,6}$"
         flags = re.IGNORECASE
         default = ""
 
-        super(Email, self).__init__(param, regex,
-                                    flags, default, message, code)
+        super(Email, self).__init__(param, regex, flags, default, message, code, optional)
 
 
 required = Required
