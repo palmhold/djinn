@@ -20,7 +20,7 @@ import functools
 
 import memcache
 from six import PY2, iteritems
-from tornado.escape import utf8
+from tornado.escape import utf8, to_unicode
 from tornado.options import define, options
 
 define("cache_key_prefix", "", str, "cache key prefix to avoid key conflict")
@@ -156,7 +156,7 @@ class CacheManager(object):
             return default
         else:
             if isinstance(val, basestring if PY2 else (str, bytes)):
-                return utf8(val)
+                return to_unicode(val)
             else:
                 return val
 
