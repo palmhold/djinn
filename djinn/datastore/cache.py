@@ -38,6 +38,8 @@ def cache(key=None, timeout=3600, args_as_key=True):
             if not options.cache_enabled:
                 return func(self, *args, **kw)
             _key = _key_gen(key, func, args_as_key, *args, **kw)
+            if options.cache_key_prefix:
+                _key = "%s:%s" % (options.cache_key_prefix, _key)
             value = manager.get(_key)
             if not value:
                 value = func(self, *args, **kw)
@@ -97,9 +99,6 @@ def _key_gen(key="", func=None, args_as_key=True, *args, **kw):
         salt = func.__name__
         code.update(salt)
         key += code.hexdigest()[:3]
-
-    if options.cache_key_prefix:
-        key = "%s:%s" % (options.cache_key_prefix, key)
 
     return key
 
