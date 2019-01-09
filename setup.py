@@ -35,6 +35,7 @@ distutils.core.setup(
     description="Djinn is a micro-framework which wraps Tornado to make it easy to write a web application using Tornado.",
     install_requires=[
         "pymysql",
+        "python-memcached",
         "six",
     ],
     classifiers=[
