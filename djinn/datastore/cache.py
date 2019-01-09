@@ -14,14 +14,15 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import functools
 import hashlib
 import logging
-import functools
 
-import memcache
 from six import PY2, iteritems
 from tornado.escape import utf8
 from tornado.options import define, options
+
+from djinn.cache import cache_factory
 
 define("cache_key_prefix", "", str, "cache key prefix to avoid key conflict")
 define("cache_enabled", True, bool, "whether cache is enabled")
@@ -36,7 +37,7 @@ def cache(key=None, timeout=3600, args_as_key=True):
         def __wrapper(self, *args, **kw):
             if not options.cache_enabled:
                 return func(self, *args, **kw)
-            _key = key_gen(key, func, args_as_key, *args, **kw)
+            _key = _key_gen(key, func, args_as_key, *args, **kw)
             value = manager.get(_key)
             if not value:
                 value = func(self, *args, **kw)
@@ -56,7 +57,7 @@ def delete(key):
     manager.delete(key)
 
 
-def key_gen(key="", func=None, args_as_key=True, *args, **kw):
+def _key_gen(key="", func=None, args_as_key=True, *args, **kw):
     assert key or func, "key and func must has one"
     if key:
         if args_as_key and "%s" in key:
@@ -107,96 +108,5 @@ def setup(servers, timeout=3):
     global manager
 
     if manager is None:
-        manager = CacheManager(servers, timeout)
+        manager = cache_factory(addr=servers, timeout=timeout)
     return manager
-
-
-def reconnect(func):
-    @functools.wraps(func)
-    def _wrapper(self, *args, **kwargs):
-        try:
-            ret = func(self, *args, **kwargs)
-
-            return ret
-        except Exception:
-            logger.exception("memcache server closed!")
-            self.close()
-
-    return _wrapper
-
-
-class CacheManager(object):
-
-    def __init__(self, servers, timeout=3):
-        self.servers = servers
-        self.default_timeout = int(timeout)
-        self._cache = memcache.Client(self.servers)
-
-        logger.debug("Memcached start client %s" % servers)
-
-    @property
-    def cache(self):
-        if self._cache is None:
-            self._cache = memcache.Client(self.servers)
-
-        return self._cache
-
-    @reconnect
-    def add(self, key, value, timeout=0):
-        if PY2 and isinstance(value, unicode):
-            value = utf8(value)
-
-        return self.cache.add(key, value,
-                              timeout or self.default_timeout)
-
-    @reconnect
-    def get(self, key, default=None):
-        val = self.cache.get(key)
-        if val is None:
-            return default
-
-        if PY2 and isinstance(val, basestring):
-            return utf8(val)
-
-        return val
-
-    @reconnect
-    def set(self, key, value, timeout=0):
-        if PY2 and isinstance(value, unicode):
-            value = utf8(value)
-        return self.cache.set(key, value,
-                              timeout or self.default_timeout)
-
-    @reconnect
-    def delete(self, key):
-        return self.cache.delete(key)
-
-    @reconnect
-    def get_many(self, keys):
-        return self.cache.get_multi(keys)
-
-    def close(self, **kwargs):
-        try:
-            self._cache.disconnect_all()
-        except Exception:
-            self._cache = None
-
-    @reconnect
-    def stats(self):
-        return self.cache.get_stats()
-
-    @reconnect
-    def flush_all(self):
-        self.cache.flush_all()
-
-
-if __name__ == "__main__":
-    setup(["127.0.0.1"])
-
-    @cache()
-    def test(a):
-        return a
-
-    a = test(1)
-    key = key_gen("", test, 1)
-    assert manager.get(key) == a
